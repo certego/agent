@@ -194,11 +194,16 @@ def create_app():
                     request.form["command"], shell=shell, cwd=cwd,
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE
                 )
-                stdout, stderr = p.communicate()
+                stdout, stderr = p.communicate()  # str or bytes (doc)
+                stdout = stdout if isinstance(stdout, str) else stdout.decode('utf8')
+                stderr = stderr if isinstance(stderr, str) else stderr.decode('utf8')
         except subprocess.TimeoutExpired:
             p.kill()
-            outs, errs = p.communicate()
-            logging.debug(f"Command timed out: {outs} - {errs}")
+            stdout, stderr = p.communicate()
+            stdout = stdout if isinstance(stdout, str) else stdout.decode('utf8')
+            stderr = stderr if isinstance(stderr, str) else stderr.decode('utf8')
+            logging.debug(f"Command timed out: {stdout} - {stderr}")
+            return jsonify(message="Command timed out", stdout=stdout, stderr=stderr), 500
         except subprocess.SubprocessError as e:
             logging.debug(f"Cannot execute command: {e}")
             return jsonify(message="Error executing command"), 500
@@ -226,16 +231,21 @@ def create_app():
                 subprocess.Popen(proc_args, cwd=cwd)
             else:
                 p = subprocess.Popen(proc_args, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                stdout, stderr = p.communicate()
+                stdout, stderr = p.communicate()  # str or bytes (doc)
+                stdout = stdout if isinstance(stdout, str) else stdout.decode('utf8')
+                stderr = stderr if isinstance(stderr, str) else stderr.decode('utf8')
         except subprocess.TimeoutExpired:
             p.kill()
-            outs, errs = p.communicate()
-            logging.debug(f"Command timed out: {outs} - {errs}")
+            stdout, stderr = p.communicate()
+            stdout = stdout if isinstance(stdout, str) else stdout.decode('utf8')
+            stderr = stderr if isinstance(stderr, str) else stderr.decode('utf8')
+            logging.debug(f"Python file timed out: {stdout} - {stderr}")
+            return jsonify(message="Python file timed out", stdout=stdout, stderr=stderr), 500
         except subprocess.SubprocessError as e:
-            logging.debug(f"Cannot execute command: {e}")
-            return jsonify(message="Error executing command"), 500
+            logging.debug(f"Cannot execute python file: {e}")
+            return jsonify(message="Error executing python file"), 500
 
-        return jsonify(message="Successfully executed command", stdout=stdout, stderr=stderr), 200
+        return jsonify(message="Successfully executed python file", stdout=stdout, stderr=stderr), 200
 
     @app.route("/pinning")
     def do_pinning():
