@@ -1,4 +1,4 @@
-New Cuckoo Agent
+Cuckoo Agent (upgraded to Python3)
 ================
 
 This repository contains the new Cuckoo Sandbox Agent. It features a more
