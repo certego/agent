@@ -21,6 +21,7 @@ AGENT_FEATURES = [
     "execpy", "pinning", "logs", "largefile", "unicodepath",
 ]
 state = {}
+exiting = False
 log = logging.getLogger()
 log.setLevel(logging.DEBUG)
 handler = logging.StreamHandler(sys.stdout)
@@ -271,12 +272,14 @@ def create_app():
 
     @app.route("/kill")
     def do_kill():
-        shutdown = request.environ.get("werkzeug.server.shutdown")
-        if shutdown is None:
-            return jsonify(message="Not running with the Werkzeug server"), 500
-
-        shutdown()
+        global exiting
+        exiting = True
         return jsonify(message="Quit the Cuckoo Agent"), 200
+
+    @app.teardown_request
+    def teardown(exception):
+        if exiting:
+            os._exit(0)
 
     return app
 
