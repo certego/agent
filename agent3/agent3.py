@@ -21,7 +21,13 @@ AGENT_FEATURES = [
     "execpy", "pinning", "logs", "largefile", "unicodepath",
 ]
 state = {}
-logging.basicConfig()
+log = logging.getLogger()
+log.setLevel(logging.DEBUG)
+handler = logging.StreamHandler(sys.stdout)
+handler.setLevel(logging.DEBUG)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+handler.setFormatter(formatter)
+log.addHandler(handler)
 
 
 def create_app():
@@ -70,7 +76,7 @@ def create_app():
         try:
             os.makedirs(request.form["dirpath"], mode=mode)
         except (IOError, OSError, PermissionError, AttributeError, NameError) as e:
-            logging.debug(f"Cannot create directory: {e}")
+            log.debug(f"Cannot create directory: {e}")
             return jsonify(smessage="Error creating directory"), 500
 
         return jsonify(message="Successfully created directory"), 200
@@ -84,7 +90,7 @@ def create_app():
         try:
             fd, filepath = tempfile.mkstemp(suffix=suffix, prefix=prefix, dir=dirpath)
         except (IOError, OSError, PermissionError, AttributeError, NameError) as e:
-            logging.debug(f"Cannot create temp temporary file: {e}")
+            log.debug(f"Cannot create temp temporary file: {e}")
             return jsonify(message="Error creating temporary file"), 500
 
         os.close(fd)
@@ -100,7 +106,7 @@ def create_app():
         try:
             dirpath = tempfile.mkdtemp(suffix=suffix, prefix=prefix, dir=dirpath)
         except (IOError, OSError, PermissionError, AttributeError, NameError) as e:
-            logging.debug(f"Cannot create temp directory: {e}")
+            log.debug(f"Cannot create temp directory: {e}")
             return jsonify(message="Error creating temporary directory"), 500
 
         return jsonify(message="Successfully created temporary directory", dirpath=dirpath), 200
@@ -117,7 +123,7 @@ def create_app():
         file.save(request.form["filepath"])
 
         if not os.path.exists(request.form["filepath"]):
-            logging.debug(f"Cannot store file: {file.filename}")
+            log.debug(f"Cannot store file: {file.filename}")
             return jsonify(message="Error storing file"), 500
 
         return jsonify(message="Successfully stored file"), 200
@@ -140,13 +146,21 @@ def create_app():
         if "zipfile" not in request.files:
             return jsonify(message="No zip file has been provided"), 400
 
+        store_zip_path = tempfile.NamedTemporaryFile(suffix=".zip").name
+        request.files["zipfile"].save(store_zip_path)
+
         try:
-            with zipfile.ZipFile(request.files["zipfile"].name, "r") as archive:
+            with zipfile.ZipFile(store_zip_path, "r") as archive:
                 archive.extractall(request.form["dirpath"])
         except zipfile.BadZipfile as e:
-            logging.debug(f"Cannot extract zip file: {e}")
+            log.debug(f"Cannot extract zip file: {e}")
+            os.unlink(store_zip_path)
             return jsonify(message="Error extracting zip file"), 500
-
+        except FileNotFoundError as e:
+            log.debug(f"Destination path does not exist: {e}")
+            os.unlink(store_zip_path)
+            return jsonify(message="Destination path does not exist"), 500
+        os.unlink(store_zip_path)
         return jsonify(message="Successfully extracted zip file"), 200
 
     @app.route("/remove", methods=["POST"])
@@ -169,7 +183,7 @@ def create_app():
             else:
                 return jsonify(message="Path provided does not exist"), 404
         except (FileNotFoundError, OSError) as e:
-            logging.debug(f"Cannot remove file or directory: {e}")
+            log.debug(f"Cannot remove file or directory: {e}")
             return jsonify(message="Error removing file or directory"), 500
 
         return jsonify(message=message), 200
@@ -202,10 +216,10 @@ def create_app():
             stdout, stderr = p.communicate()
             stdout = stdout if isinstance(stdout, str) else stdout.decode('utf8')
             stderr = stderr if isinstance(stderr, str) else stderr.decode('utf8')
-            logging.debug(f"Command timed out: {stdout} - {stderr}")
+            log.debug(f"Command timed out: {stdout} - {stderr}")
             return jsonify(message="Command timed out", stdout=stdout, stderr=stderr), 500
         except subprocess.SubprocessError as e:
-            logging.debug(f"Cannot execute command: {e}")
+            log.debug(f"Cannot execute command: {e}")
             return jsonify(message="Error executing command"), 500
 
         return jsonify(message="Successfully executed command", stdout=stdout, stderr=stderr), 200
@@ -239,10 +253,10 @@ def create_app():
             stdout, stderr = p.communicate()
             stdout = stdout if isinstance(stdout, str) else stdout.decode('utf8')
             stderr = stderr if isinstance(stderr, str) else stderr.decode('utf8')
-            logging.debug(f"Python file timed out: {stdout} - {stderr}")
+            log.debug(f"Python file timed out: {stdout} - {stderr}")
             return jsonify(message="Python file timed out", stdout=stdout, stderr=stderr), 500
         except subprocess.SubprocessError as e:
-            logging.debug(f"Cannot execute python file: {e}")
+            log.debug(f"Cannot execute python file: {e}")
             return jsonify(message="Error executing python file"), 500
 
         return jsonify(message="Successfully executed python file", stdout=stdout, stderr=stderr), 200

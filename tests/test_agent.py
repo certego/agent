@@ -8,6 +8,8 @@ import threading
 import requests
 import platform
 import tempfile
+import zipfile
+import shutil
 from agent3.agent3 import create_app, AGENT_VERSION
 
 # This whole setup is a bit ugly, but oh well.
@@ -83,7 +85,7 @@ def test_mkdir():
         "path": os.path.join(temp_dir.name, "mkdir.test"),
     }).status_code == 404
 
-    os.rmdir(temp_dir.name)
+    shutil.rmtree(temp_dir.name)
 
 
 def test_mktemp():
@@ -119,7 +121,71 @@ def test_execute():
 
 
 def test_zipfile():
-    assert http_post("/extract").status_code == 400
+    file1 = os.path.join(os.getcwd(), "a.txt")
+    file2 = os.path.join(os.getcwd(), "b.txt")
+    file3 = os.path.join(os.getcwd(), "c.txt")
+    zippath = os.path.join(os.getcwd(), "payload.zip")
+    dstpath = os.path.join(os.getcwd(), "test_extract")
+
+    if os.path.exists(dstpath):
+        shutil.rmtree(dstpath)
+    else:
+        os.mkdir(dstpath)
+
+    f = open(file1, "w")
+    f.write("A" * 1024 * 1024)
+    f.close()
+
+    f = open(file2, "w")
+    f.write("B" * 1024 * 1024)
+    f.close()
+
+    f = open(file3, "w")
+    f.write("C" * 1024 * 1024)
+    f.close()
+
+    with zipfile.ZipFile(zippath, mode="w") as archive:
+        archive.write(os.path.basename(file1))
+        archive.write(os.path.basename(file2))
+        archive.write(os.path.basename(file3))
+
+    with open(zippath, "rb") as z:
+        assert http_post("/extract", data={
+            "dirpath": "/proc/non-existent",
+        }, files={
+            "zipfile": z,
+        }).status_code == 500
+
+    with open(zippath, "rb") as z:
+        assert http_post("/extract", data={
+            "dirpath": dstpath,
+        }, files={
+            "zipfile": z,
+        }).status_code == 200
+
+    r = http_post("/retrieve", data={
+        "filepath": os.path.join(dstpath, "a.txt"),
+    })
+    assert r.status_code == 200
+    assert r.content == bytes("A" * 1024 * 1024, 'ascii')
+
+    r = http_post("/retrieve", data={
+        "filepath": os.path.join(dstpath, "b.txt"),
+    })
+    assert r.status_code == 200
+    assert r.content == bytes("B" * 1024 * 1024, 'ascii')
+
+    r = http_post("/retrieve", data={
+        "filepath": os.path.join(dstpath, "c.txt"),
+    })
+    assert r.status_code == 200
+    assert r.content == bytes("C" * 1024 * 1024, 'ascii')
+
+    os.unlink(file1)
+    os.unlink(file2)
+    os.unlink(file3)
+    os.unlink(zippath)
+    shutil.rmtree(dstpath)
 
 
 def test_store():
