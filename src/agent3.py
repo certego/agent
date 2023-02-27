@@ -17,10 +17,15 @@ import zipfile
 import subprocess
 
 AGENT_VERSION = "1.0.0"
-AGENT_FEATURES = [
-    "execpy", "pinning", "logs", "largefile", "unicodepath",
-]
-state = {}
+AGENT_FEATURES = ["execpy", "execute", "pinning", "logs", "largefile", "unicodepath"]
+STATUS_INIT = 0x0001
+STATUS_RUNNING = 0x0002
+STATUS_COMPLETED = 0x0003
+STATUS_TIMEOUT = 0x0004
+STATUS_FAILED = 0x0005
+TRUSTED_IPs = ['127.0.0.1']
+
+state = {"status": STATUS_INIT}
 exiting = False
 log = logging.getLogger()
 log.setLevel(logging.DEBUG)
@@ -34,9 +39,17 @@ log.addHandler(handler)
 def create_app():
     app = Flask(__name__)
 
+    @app.before_request
+    def limit_clients():
+        if "client_ip" in state and request.remote_addr != state["client_ip"]:
+            if request.remote_addr not in TRUSTED_IPs:
+                return jsonify(message="Access denied"), 403
+            if request.path != "/status" or request.method != "POST":
+                return jsonify(message="Method Not Allowed"), 405
+
     @app.route("/")
     def get_index():
-        return jsonify(message="Cuckoo Agent!", success=True, version=AGENT_VERSION, features=AGENT_FEATURES), 200
+        return jsonify(message="Cuckoo/CAPE Agent!", success=True, version=AGENT_VERSION, features=AGENT_FEATURES), 200
 
     @app.route("/status")
     def get_status():
@@ -47,7 +60,7 @@ def create_app():
         if "status" not in request.form:
             return jsonify(message="No status has been provided"), 400
 
-        state["status"] = request.form["status"]
+        state["status"] = int(request.form["status"])
         state["description"] = request.form.get("description")
         return jsonify(message="Analysis status updated"), 200
 
@@ -218,10 +231,16 @@ def create_app():
             stdout = stdout if isinstance(stdout, str) else stdout.decode('utf8')
             stderr = stderr if isinstance(stderr, str) else stderr.decode('utf8')
             log.debug(f"Command timed out: {stdout} - {stderr}")
+            state["status"] = STATUS_TIMEOUT
+            state["description"] = "Command timed out"
             return jsonify(message="Command timed out", stdout=stdout, stderr=stderr), 500
         except subprocess.SubprocessError as e:
             log.debug(f"Cannot execute command: {e}")
+            state["status"] = STATUS_FAILED
+            state["description"] = "Error executing command"
             return jsonify(message="Error executing command"), 500
+
+        state["status"] = STATUS_RUNNING
 
         return jsonify(message="Successfully executed command", stdout=stdout, stderr=stderr), 200
 
@@ -255,10 +274,16 @@ def create_app():
             stdout = stdout if isinstance(stdout, str) else stdout.decode('utf8')
             stderr = stderr if isinstance(stderr, str) else stderr.decode('utf8')
             log.debug(f"Python file timed out: {stdout} - {stderr}")
+            state["status"] = STATUS_TIMEOUT
+            state["description"] = "Command timed out"
             return jsonify(message="Python file timed out", stdout=stdout, stderr=stderr), 500
         except subprocess.SubprocessError as e:
             log.debug(f"Cannot execute python file: {e}")
+            state["status"] = STATUS_FAILED
+            state["description"] = "Error executing command"
             return jsonify(message="Error executing python file"), 500
+
+        state["status"] = STATUS_RUNNING
 
         return jsonify(message="Successfully executed python file", stdout=stdout, stderr=stderr), 200
 

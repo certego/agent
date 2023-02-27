@@ -10,7 +10,7 @@ import platform
 import tempfile
 import zipfile
 import shutil
-from agent3.agent3 import create_app, AGENT_VERSION
+from src.agent3 import create_app, AGENT_VERSION
 
 # This whole setup is a bit ugly, but oh well.
 host = "0.0.0.0"
